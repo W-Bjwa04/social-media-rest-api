@@ -27,6 +27,10 @@ import UserRouter from "./routes/user.routes.js";
 
 app.use("/api/user", UserRouter);
 
+import PostRouter from "./routes/post.routes.js";
+
+app.use("/api/post", PostRouter);
+
 app.use(errorHanlder);
 
 app.listen(process.env.PORT, async (req, res) => {
