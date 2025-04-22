@@ -7,6 +7,7 @@ import {
 import { CustomError } from "../middlewares/error.middlewares.js";
 import mongoose from "mongoose";
 import cloudinary from "cloudinary";
+import { Comment } from "../models/Comment.js";
 
 // controller for create the post
 const createPostController = async (req, res, next) => {
@@ -251,15 +252,82 @@ const updatePostController = async (req, res, next) => {
   }
 };
 
+// delete the post
+
 const deletePostController = async (req, res, next) => {
-  const { postid } = req.params;
-  
-  if(!mongoose.Types.ObjectId.includes(postid)){
-    throw new CustomError("Invalid post ID", 400)
+  try {
+    const { postid } = req.params;
+
+    // validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(postid)) {
+      throw new CustomError("Invalid post ID", 400);
+    }
+
+    const post = await Post.findById(postid);
+    if (!post) {
+      throw new CustomError("Post not found", 404);
+    }
+
+    // Check if the post belongs to the user
+    if (!req.user.posts.some((id) => id.toString() === post._id.toString())) {
+      throw new CustomError("You are not the owner of the post", 403);
+    }
+
+    // Remove post reference from user
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { $pull: { posts: post._id } },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      throw new CustomError("Failed to update the user", 500);
+    }
+
+    // Delete all comments linked to the post
+    await Comment.deleteMany({ post: post._id });
+
+    // Finally, delete the post
+    const deletedPost = await Post.findByIdAndDelete(postid);
+    if (!deletedPost) {
+      throw new CustomError("Failed to delete the post", 500);
+    }
+
+    return res.status(200).json({
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  
+// get a specific post
 
+const getPostController = async (req, res, next) => {
+  try {
+    const { postid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(postid)) {
+      throw new CustomError("Post Id not valid", 400);
+    }
+
+    const post = await Post.findById(postid).populate({
+      path: "user",
+      select: "username fullName profilePicture",
+    });
+    if (!post) {
+      throw new CustomError("Post Not Found", 404);
+    }
+    const postResponse = post.toJSON();
+    postResponse.image = getUrlFromImageId(post.image);
+
+    return res.status(200).json({
+      message: "Post fetched successfully",
+      post: postResponse,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // helper function
@@ -273,4 +341,10 @@ const getUrlFromImageId = (publicIds) => {
   );
 };
 
-export { createPostController, getAllPostsController, updatePostController };
+export {
+  createPostController,
+  getAllPostsController,
+  updatePostController,
+  deletePostController,
+  getPostController,
+};
