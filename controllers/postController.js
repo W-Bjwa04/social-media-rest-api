@@ -330,6 +330,96 @@ const getPostController = async (req, res, next) => {
   }
 };
 
+// like the post
+
+const likePostController = async (req, res, next) => {
+  try {
+    const { postid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(postid)) {
+      throw new CustomError("Post Id not valid", 400);
+    }
+
+    const post = await Post.findById(postid);
+
+    if (!post) {
+      throw new CustomError("Post Not Found", 404);
+    }
+
+    // check if the user already like the post or not
+
+    if (post.likes.includes(req.user._id)) {
+      throw new CustomError("Post already liked", 400);
+    }
+
+    // update the post
+
+    const updatedPost = await Post.findByIdAndUpdate(
+      postid,
+      {
+        $push: { likes: req.user._id },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPost) {
+      throw new CustomError("Failed to update the post", 500);
+    }
+
+    return res.status(200).json({
+      message: "Post liked successfully",
+      post: updatedPost,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// dislike the post
+
+const disLikePostController = async (req, res, next) => {
+  try {
+    const { postid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(postid)) {
+      throw new CustomError("Post Id not valid", 400);
+    }
+
+    const post = await Post.findById(postid);
+
+    if (!post) {
+      throw new CustomError("Post Not Found", 404);
+    }
+
+    // check if the user like the post or not
+
+    if (!post.likes.includes(req.user._id)) {
+      throw new CustomError("Post not liked ", 400);
+    }
+
+    // update the post
+
+    const updatedPost = await Post.findByIdAndUpdate(
+      postid,
+      {
+        $pull: { likes: req.user._id },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPost) {
+      throw new CustomError("Failed to update the post", 500);
+    }
+
+    return res.status(200).json({
+      message: "Post disLiked successfully",
+      post: updatedPost,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // helper function
 
 const getUrlFromImageId = (publicIds) => {
@@ -347,4 +437,6 @@ export {
   updatePostController,
   deletePostController,
   getPostController,
+  likePostController,
+  disLikePostController,
 };

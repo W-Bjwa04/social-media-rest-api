@@ -9,6 +9,8 @@ import {
   updatePostController,
   deletePostController,
   getPostController,
+  likePostController,
+  disLikePostController,
 } from "../controllers/postController.js";
 
 // create the post
@@ -33,6 +35,14 @@ router.route("/delete/:postid").delete(verifyToken, deletePostController);
 
 // get details of a single post (no authetication needed)
 
-router.route("/:postid").get(getPostController)
+router.route("/:postid").get(getPostController);
+
+// like the post
+
+router.route("/like/:postid").get(verifyToken, likePostController);
+
+// dislike the post
+
+router.route("/dislike/:postid").get(verifyToken, disLikePostController);
 
 export default router;
