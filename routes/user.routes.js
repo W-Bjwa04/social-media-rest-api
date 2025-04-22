@@ -14,6 +14,7 @@ import {
   searchUserController,
 } from "../controllers/userContoller.js";
 
+import { uploadSingleImage } from '../middlewares/upload.js';
 import { verifyToken } from "../middlewares/verifyToken.js";
 
 // protected routes (user needs to be login first )
@@ -24,8 +25,7 @@ router.route("/:userid").get(verifyToken, getUserController);
 
 // update user route
 
-router.route("/update/:userid").put(verifyToken, updateUserController);
-
+router.put('/update/:userid', verifyToken, uploadSingleImage, updateUserController);
 // follow the user
 
 router.route("/follow/:userid").get(verifyToken, followUserController);

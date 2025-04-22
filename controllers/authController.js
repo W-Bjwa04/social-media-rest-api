@@ -2,50 +2,102 @@ import { User } from "../models/User.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { CustomError } from "../middlewares/error.middlewares.js";
+import {
+  uploadOnCloudinary,
+  deleteFromCloudinary,
+} from "../config/cloudinary.js";
 
 const registerController = async (req, res, next) => {
+  let uploadedImageIds = [];
+
   try {
-    // get the data from the req body
+    const { username, password, email, fullName, bio, imageTypes } = req.body;
 
-    const data = req.body;
-
-    const { username, password, email } = data;
-
-    // check for the existing user
+    if (!username || !password || !email) {
+      throw new CustomError("Username, password, and email are required", 400);
+    }
 
     const existingUser = await User.findOne({
-      $or: [{ username }, { email }], // check for both username and email
+      $or: [{ username }, { email }],
     });
-
     if (existingUser) {
-      throw new CustomError("Username or email is already regisatered", 404);
+      throw new CustomError("Username or email is already registered", 409);
     }
 
-    const salt = await bcrypt.genSalt(10); // 10 are the no. of iterations
-    const hashPassword = await bcrypt.hashSync(password, salt);
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newIUsewr = User({
-      ...req.body,
-      password: hashPassword,
-    });
-
-    await newIUsewr.save();
-
-    const verifyUser = await User.findOne({
+    const userData = {
       username,
-    });
+      password: hashedPassword,
+      email,
+      fullName,
+      bio,
+    };
 
-    if (!verifyUser) {
-      throw new CustomError("User cannot be saved to the database", 404);
+    if (req.files && req.files.length > 0) {
+      if (req.files.length > 2) {
+        throw new CustomError("Maximum 2 images allowed", 400);
+      }
+
+      const validImageTypes = ["profile", "cover"];
+
+      // Normalize imageTypes to an array
+      let types = [];
+      if (Array.isArray(imageTypes)) {
+        types = imageTypes;
+      } else if (typeof imageTypes === "string") {
+        types = [imageTypes]; // single image type (like "cover")
+      }
+
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+
+        const type =
+          types[i] && validImageTypes.includes(types[i].toLowerCase())
+            ? types[i].toLowerCase()
+            : i === 0
+              ? "profile"
+              : "cover";
+
+        const uploadResult = await uploadOnCloudinary(file.path);
+
+        if (!uploadResult) {
+          throw new CustomError("Image upload failed", 500);
+        }
+
+        uploadedImageIds.push(uploadResult.public_id);
+
+        if (type === "profile") {
+          userData.profilePicture = uploadResult.secure_url;
+          userData.profilePictureId = uploadResult.public_id;
+        } else if (type === "cover") {
+          userData.coverPicture = uploadResult.secure_url;
+          userData.coverPictureId = uploadResult.public_id;
+        }
+      }
     }
+
+    const newUser = new User(userData);
+    await newUser.save();
+
+    const userResponse = await User.findById(newUser._id).select("-password");
+
     return res.status(201).json({
-      message: "User Created Successfully",
-      user: verifyUser,
+      message: "User created successfully",
+      user: userResponse,
     });
   } catch (error) {
+    for (const publicId of uploadedImageIds) {
+      await deleteFromCloudinary(publicId);
+    }
+
+    console.error("Registration error:", error.message);
     next(error);
   }
 };
+
+export default registerController;
 
 const loginController = async (req, res, next) => {
   try {

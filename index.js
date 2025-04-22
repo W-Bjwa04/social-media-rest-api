@@ -1,14 +1,17 @@
+// Very top of your entry file
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+
 import connectDB from "./database/db.js";
 import cookieParser from "cookie-parser";
 import { errorHanlder } from "./middlewares/error.middlewares.js";
+
 const app = express();
 
 app.use(cors());
-
-dotenv.config();
 
 app.use(express.json());
 

@@ -4,6 +4,10 @@ import { CustomError } from "../middlewares/error.middlewares.js";
 import { Post } from "../models/Post.js";
 import { Comment } from "../models/Comment.js";
 import { Story } from "../models/Story.js";
+import {
+  uploadOnCloudinary,
+  deleteFromCloudinary,
+} from "../config/cloudinary.js";
 
 // Get User Controller
 const getUserController = async (req, res, next) => {
@@ -31,47 +35,114 @@ const getUserController = async (req, res, next) => {
 
 // Update User Controller
 const updateUserController = async (req, res, next) => {
+  let uploadedImagePublicId = null;
+
   try {
     const { userid } = req.params;
-    const updatedData = req.body;
+    const currentUserId = req.user._id.toString();
 
     // Validate user ID
     if (!mongoose.Types.ObjectId.isValid(userid)) {
       throw new CustomError("Invalid user ID", 400);
     }
 
-    // Allowed fields for update
-    const allowedFields = ["fullName", "bio", "profilePicture", "coverPicture"];
-
-    // Sanitize updatedData
-    const sanitizedData = Object.keys(updatedData)
-      .filter((key) => allowedFields.includes(key))
-      .reduce((obj, key) => {
-        obj[key] = updatedData[key];
-        return obj;
-      }, {});
-
-    // Validate input
-    if (Object.keys(sanitizedData).length === 0) {
-      throw new CustomError("No valid fields to update", 400);
+    // Ensure the user can only update their own account
+    if (userid !== currentUserId) {
+      throw new CustomError("You can only update your own account", 403);
     }
 
-    // Update user
-    const updatedUser = await User.findByIdAndUpdate(
-      userid,
-      { $set: sanitizedData },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!updatedUser) {
+    const user = await User.findById(userid);
+    if (!user) {
       throw new CustomError("User not found", 404);
     }
+
+    const updateData = {};
+    const allowedFields = ["username", "fullName", "bio", "email"];
+
+    // Update allowed fields
+    for (const field of allowedFields) {
+      if (req.body[field]) {
+        updateData[field] = req.body[field];
+      }
+    }
+
+    // Check if image type is provided and validate it
+    if (req.file) {
+      const { imageType } = req.body;
+
+      // Validate image type: Only "profile" or "cover" is allowed
+      const validImageTypes = ["profile", "cover"];
+      const selectedImageType = validImageTypes.includes(imageType)
+        ? imageType
+        : "profile"; // Default to "profile" if invalid
+
+      // Determine which field to update based on image type
+      const field =
+        selectedImageType === "profile" ? "profilePicture" : "coverPicture";
+      const idField =
+        selectedImageType === "profile" ? "profilePictureId" : "coverPictureId";
+
+      // Delete old image from Cloudinary if it exists
+      if (user[idField]) {
+        try {
+          console.log(`Deleting old image for ${selectedImageType}...`);
+          await deleteFromCloudinary(user[idField]);
+        } catch (err) {
+          console.warn(`Failed to delete old image:`, err.message);
+        }
+      }
+
+      // Upload new image to Cloudinary
+      const uploadResult = await uploadOnCloudinary(req.file.path);
+      if (!uploadResult) {
+        throw new CustomError("Image upload failed", 500);
+      }
+
+      // Store the new image URL and public ID in the database
+      updateData[field] = uploadResult.secure_url;
+      updateData[idField] = uploadResult.public_id;
+      uploadedImagePublicId = uploadResult.public_id; // Store to clean up if error occurs later
+    }
+
+    // Validate unique fields (username and email)
+    if (updateData.username) {
+      const existingUser = await User.findOne({
+        username: updateData.username,
+        _id: { $ne: userid },
+      });
+      if (existingUser) {
+        throw new CustomError("Username already taken", 400);
+      }
+    }
+
+    if (updateData.email) {
+      const existingUser = await User.findOne({
+        email: updateData.email,
+        _id: { $ne: userid },
+      });
+      if (existingUser) {
+        throw new CustomError("Email already taken", 400);
+      }
+    }
+
+    // Update the user in the database
+    const updatedUser = await User.findByIdAndUpdate(
+      userid,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password");
 
     return res.status(200).json({
       message: "User updated successfully",
       user: updatedUser,
     });
   } catch (error) {
+    // If an image was uploaded but an error occurred later, delete it from Cloudinary
+    if (uploadedImagePublicId) {
+      await deleteFromCloudinary(uploadedImagePublicId);
+    }
+
+    console.error("Update user error:", error.message, error.stack);
     next(error);
   }
 };
@@ -337,6 +408,7 @@ const getBlockListController = async (req, res, next) => {
     next(error);
   }
 };
+
 const deleteUserController = async (req, res, next) => {
   try {
     const { userid } = req.params;

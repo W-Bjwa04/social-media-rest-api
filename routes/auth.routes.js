@@ -10,10 +10,10 @@ import {
 } from "../controllers/authController.js";
 
 import { verifyToken } from "../middlewares/verifyToken.js";
-
+import { uploadMultipleImages } from '../middlewares/upload.js';
 // Register
 
-router.route("/register").post(registerController);
+router.post('/register', uploadMultipleImages, registerController);
 
 // Login
 router.route("/login").post(loginController);
