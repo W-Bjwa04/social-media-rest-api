@@ -31,6 +31,10 @@ import PostRouter from "./routes/post.routes.js";
 
 app.use("/api/post", PostRouter);
 
+import CommentRouter from "./routes/comment.routes.js";
+
+app.use("/api/comment", CommentRouter);
+
 app.use(errorHanlder);
 
 app.listen(process.env.PORT, async (req, res) => {

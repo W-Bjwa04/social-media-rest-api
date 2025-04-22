@@ -11,19 +11,19 @@ const replySchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      requried: true, // Typo: should be "required"
+      required: true,
       trim: true,
     },
     likes: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        requried: true, // Typo: should be "required"
+        required: true,
       },
     ],
   },
   {
-    timestapms: true, // Typo: should be "timestamps"
+    timestamps: true,
   }
 );
 
