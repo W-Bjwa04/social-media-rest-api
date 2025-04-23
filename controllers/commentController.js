@@ -210,10 +210,352 @@ const getAllCommentsOnPostController = async (req, res, next) => {
   }
 };
 
+// controller for delete a comment
+const deleteCommentController = async (req, res, next) => {
+  try {
+    const { commentid } = req.params;
+
+    // ✅ Check if ID is valid
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment ID not valid", 400);
+    }
+
+    const comment = await Comment.findById(commentid);
+    if (!comment) {
+      throw new CustomError("Comment not found", 404);
+    }
+
+    // ✅ Authorization check
+    if (comment.user.toString() !== req.user._id.toString()) {
+      throw new CustomError(
+        "You are not authorized to delete this comment",
+        403
+      );
+    }
+
+    // ✅ Remove comment reference from the post
+    const post = await Post.findByIdAndUpdate(
+      comment.post,
+      { $pull: { comments: comment._id } },
+      { new: true, runValidators: true }
+    );
+
+    if (!post) {
+      throw new CustomError("Post associated with the comment not found", 404);
+    }
+
+    // ✅ Remove comment reference from the user
+    const user = await User.findByIdAndUpdate(
+      comment.user,
+      { $pull: { comments: comment._id } },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      throw new CustomError("User associated with the comment not found", 404);
+    }
+
+    // ✅ Delete the comment
+    const deletedComment = await comment.deleteOne(); // no need to pass `{ _id }` again
+
+    if (!deletedComment) {
+      throw new CustomError("Unable to delete the comment", 500);
+    }
+
+    return res.status(200).json({
+      message: "Comment deleted successfully",
+    });
+  } catch (error) {
+    next(error); // ✅ Always forward to error handler
+  }
+};
+
+// controller for delete the reply on an comment
+
+const deleteReplyCommentController = async (req, res, next) => {
+  try {
+    const { commentid, replyid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment Id not valid", 400);
+    }
+
+    const comment = await Comment.findById(commentid);
+
+    if (!comment) {
+      throw new CustomError("Comment Not Found", 404);
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(replyid)) {
+      throw new CustomError("Reply Id not valid", 400);
+    }
+
+    const reply = comment.replies.id(replyid);
+
+    if (!reply) {
+      throw new CustomError("Reply Not Found", 404);
+    }
+
+    // Check if current user owns the reply
+
+    if (reply.user.toString() !== req.user._id.toString()) {
+      throw new CustomError("You are not authorized to delete this reply", 403);
+    }
+
+    const updatedComment = await Comment.findByIdAndUpdate(
+      commentid,
+      { $pull: { replies: { _id: replyid } } },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedComment) {
+      throw new CustomError("Comment not updated", 500);
+    }
+
+    return res.status(200).json({
+      message: "Reply deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// controller for like the comment
+
+// Controller to like a comment
+const likeCommentController = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { commentid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment Id not valid", 400);
+    }
+
+    const comment = await Comment.findById(commentid).session(session);
+    if (!comment) {
+      throw new CustomError("Comment Not Found", 404);
+    }
+
+    if (comment.likes.includes(req.user._id)) {
+      throw new CustomError("You have already liked this comment", 400);
+    }
+
+    const updatedComment = await Comment.findByIdAndUpdate(
+      commentid,
+      { $addToSet: { likes: req.user._id } },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!updatedComment) {
+      throw new CustomError("Unable to like the comment", 500);
+    }
+
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      message: "Comment Liked Successfully",
+      comment: updatedComment,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+// controller for dislike the comment
+
+const dislikeCommentController = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { commentid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment Id not valid", 400);
+    }
+
+    const comment = await Comment.findById(commentid).session(session);
+    if (!comment) {
+      throw new CustomError("Comment Not Found", 404);
+    }
+
+    if (!comment.likes.includes(req.user._id)) {
+      throw new CustomError("Like Comment First Before Unlike", 400);
+    }
+
+    const updatedComment = await Comment.findByIdAndUpdate(
+      commentid,
+      { $pull: { likes: req.user._id } },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!updatedComment) {
+      throw new CustomError("Unable to unlike the comment", 500);
+    }
+
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      message: "Comment UnLiked Successfully",
+      comment: updatedComment,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+// controller for like the comment reply
+
+const likeCommentReplyController = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { commentid, replyid } = req.params;
+
+    // Validate comment ID
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment Id not valid", 400);
+    }
+
+    // Validate reply ID
+    if (!mongoose.Types.ObjectId.isValid(replyid)) {
+      throw new CustomError("Reply Id not valid", 400);
+    }
+
+    // Find the comment
+    const comment = await Comment.findById(commentid)
+      .select("replies")
+      .session(session);
+    if (!comment) {
+      throw new CustomError("Comment Not Found", 404);
+    }
+
+    // Find the reply
+    const reply = comment.replies.id(replyid);
+    if (!reply) {
+      throw new CustomError("Reply Not Found", 404);
+    }
+
+    // Check for duplicate like
+    if (reply.likes.includes(req.user._id)) {
+      throw new CustomError("You have already liked this reply", 400);
+    }
+
+    // Atomically add the user's ID to reply.likes
+    const updatedComment = await Comment.findOneAndUpdate(
+      { _id: commentid, "replies._id": replyid },
+      { $push: { "replies.$.likes": req.user._id } },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!updatedComment) {
+      throw new CustomError("Unable to like the reply", 500);
+    }
+
+    await session.commitTransaction();
+
+    // Return only the updated reply for efficiency
+    const updatedReply = updatedComment.replies.id(replyid);
+    return res.status(200).json({
+      message: "Comment Reply Liked Successfully",
+      reply: updatedReply,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+// controller for unlike the comment reply
+
+const dislikeCommentReplyController = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { commentid, replyid } = req.params;
+
+    // Validate comment ID
+    if (!mongoose.Types.ObjectId.isValid(commentid)) {
+      throw new CustomError("Comment Id not valid", 400);
+    }
+
+    // Validate reply ID
+    if (!mongoose.Types.ObjectId.isValid(replyid)) {
+      throw new CustomError("Reply Id not valid", 400);
+    }
+
+    // Find the comment
+    const comment = await Comment.findById(commentid)
+      .select("replies")
+      .session(session);
+    if (!comment) {
+      throw new CustomError("Comment Not Found", 404);
+    }
+
+    // Find the reply
+    const reply = comment.replies.id(replyid);
+    if (!reply) {
+      throw new CustomError("Reply Not Found", 404);
+    }
+
+    // Check if the user has liked the reply
+    if (!reply.likes.includes(req.user._id)) {
+      throw new CustomError("Like The Reply First Before Dislike", 400);
+    }
+
+    // Atomically remove the user's ID from reply.likes
+    const updatedComment = await Comment.findOneAndUpdate(
+      { _id: commentid, "replies._id": replyid },
+      { $pull: { "replies.$.likes": req.user._id } },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!updatedComment) {
+      throw new CustomError("Unable to unlike the reply", 500);
+    }
+
+    await session.commitTransaction();
+
+    // Return only the updated reply for efficiency
+    const updatedReply = updatedComment.replies.id(replyid);
+    return res.status(200).json({
+      message: "Comment Reply DisLiked Successfully",
+      reply: updatedReply,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
 export {
   createCommentController,
   createCommentReplyController,
   updateCommentController,
   updateCommentReplyController,
   getAllCommentsOnPostController,
+  deleteCommentController,
+  deleteReplyCommentController,
+  likeCommentController,
+  dislikeCommentController,
+  likeCommentReplyController,
+  dislikeCommentReplyController,
 };
