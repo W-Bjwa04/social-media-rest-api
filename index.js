@@ -35,6 +35,14 @@ import CommentRouter from "./routes/comment.routes.js";
 
 app.use("/api/comment", CommentRouter);
 
+import StoryRouter from "./routes/story.routes.js";
+
+app.use("/api/story", StoryRouter);
+
+import ConversationRouter from "./routes/conversation.routes.js";
+
+app.use("/api/conversations", ConversationRouter);
+
 app.use(errorHanlder);
 
 app.listen(process.env.PORT, async (req, res) => {

@@ -4,7 +4,7 @@ const storySchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      requried: true,
+      required: true,
     },
 
     text: {
@@ -13,10 +13,12 @@ const storySchema = new mongoose.Schema(
       trim: true,
     },
 
-    image: {
-      type: String, // url of the cloudinary
-      required: false,
-    },
+    image: [
+      {
+        type: String,
+        required: false,
+      },
+    ],
 
     likes: [
       {
@@ -24,10 +26,15 @@ const storySchema = new mongoose.Schema(
         ref: "User",
       },
     ],
-  },
 
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: 60 * 60 * 24, // 24 hours in seconds
+    },
+  },
   {
-    timestamps: true,
+    timestamps: false,
   }
 );
 
